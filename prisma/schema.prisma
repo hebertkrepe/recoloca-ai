@@ -1,0 +1,127 @@
+// Schema do banco de dados - RecolocaAI
+// Prisma ORM com PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Modelo de Usuário (id = Supabase Auth UUID)
+model User {
+  id          String   @id
+  email       String   @unique
+  name        String?
+  avatar      String?
+  linkedinUrl String?  @map("linkedin_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  profile         Profile?
+  jobApplications JobApplication[]
+
+  @@map("users")
+}
+
+// Perfil do Usuário
+model Profile {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  headline  String?
+  summary   String?  @db.Text
+  phone     String?
+  location  String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  experiences Experience[]
+  skills      Skill[]
+  education   Education[]
+
+  @@map("profiles")
+}
+
+// Experiência Profissional
+model Experience {
+  id          String   @id @default(cuid())
+  profileId   String   @map("profile_id")
+  company     String
+  role        String
+  startDate   DateTime @map("start_date")
+  endDate     DateTime? @map("end_date")
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("experiences")
+}
+
+// Skills
+model Skill {
+  id        String   @id @default(cuid())
+  profileId String   @map("profile_id")
+  name      String
+  level     String   // JUNIOR, PLENO, SENIOR, ESPECIALISTA
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("skills")
+}
+
+// Formação Acadêmica
+model Education {
+  id           String   @id @default(cuid())
+  profileId    String   @map("profile_id")
+  institution  String
+  course       String
+  year         Int?
+  description  String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("education")
+}
+
+// Vagas de Emprego
+model Job {
+  id          String   @id @default(cuid())
+  title       String
+  company     String
+  description String   @db.Text
+  salaryRange String?  @map("salary_range")
+  location    String
+  remote      Boolean  @default(false)
+  seniority   String   // JUNIOR, PLENO, SENIOR, ESPECIALISTA
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  applications JobApplication[]
+
+  @@map("jobs")
+}
+
+// Candidatura a Vaga
+model JobApplication {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  jobId     String   @map("job_id")
+  status    String   @default("INTEREST") // INTEREST, APPLIED, INTERVIEW, OFFER, FINISHED
+  notes     String?  @db.Text
+  appliedAt DateTime @default(now()) @map("applied_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job  Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobId])
+  @@map("job_applications")
+}
