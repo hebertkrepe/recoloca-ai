@@ -1,81 +1,55 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
-import { parseDate, type ProfileUpdatePayload } from '@/lib/profile-types'
-
-export const runtime = 'nodejs'
 
 export async function GET() {
   try {
     const supabase = await createClient()
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser()
 
-    if (!user) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
     const dbUser = await prisma.user.findUnique({
       where: { id: user.id },
       include: {
-        profile: {
-          include: {
-            experiences: { orderBy: { startDate: 'desc' } },
-            skills: { orderBy: { name: 'asc' } },
-            education: { orderBy: { year: 'desc' } },
-          },
-        },
+        profile: true,
+        experiences: { orderBy: { startDate: 'desc' } },
+        skills: true,
+        education: true,
       },
     })
 
-    if (!dbUser?.profile) {
+    if (!dbUser || !dbUser.profile) {
       return NextResponse.json({ error: 'Perfil não encontrado' }, { status: 404 })
     }
-
-    const { profile } = dbUser
 
     return NextResponse.json({
       data: {
         user: {
           id: dbUser.id,
-          name: dbUser.name || user.user_metadata?.name || '',
           email: dbUser.email,
-          avatar: dbUser.avatar || user.user_metadata?.avatar_url || '',
+          name: dbUser.name || '',
+          avatar: dbUser.avatar || '',
         },
         profile: {
-          id: profile.id,
-          headline: profile.headline || '',
-          summary: profile.summary || '',
-          phone: profile.phone || '',
-          location: profile.location || '',
+          headline: dbUser.profile.headline || '',
+          summary: dbUser.profile.summary || '',
+          phone: dbUser.profile.phone || '',
+          location: dbUser.profile.location || '',
         },
-        experiences: profile.experiences.map((exp) => ({
-          id: exp.id,
-          company: exp.company,
-          role: exp.role,
-          startDate: exp.startDate.toISOString(),
-          endDate: exp.endDate?.toISOString() ?? null,
-          description: exp.description,
-        })),
-        skills: profile.skills.map((skill) => ({
-          id: skill.id,
-          name: skill.name,
-          level: skill.level,
-        })),
-        education: profile.education.map((edu) => ({
-          id: edu.id,
-          institution: edu.institution,
-          course: edu.course,
-          year: edu.year,
-          description: edu.description,
-        })),
+        experiences: dbUser.experiences,
+        skills: dbUser.skills,
+        education: dbUser.education,
       },
     })
   } catch (error) {
     console.error('Erro ao buscar perfil:', error)
-    const message = error instanceof Error ? error.message : 'Erro interno'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: 'Erro interno ao buscar perfil' }, { status: 500 })
   }
 }
 
@@ -84,75 +58,113 @@ export async function PUT(request: Request) {
     const supabase = await createClient()
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser()
 
-    if (!user) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
-    const body = (await request.json()) as ProfileUpdatePayload
+    const body = await request.json()
+    const { name, email, headline, summary, phone, location, experiences, skills, education } = body
 
-    await prisma.user.update({
+    // Atualiza usuário e perfil
+    const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: {
-        name: body.name,
-        email: body.email,
+        name,
+        email,
+        profile: {
+          upsert: {
+            create: { headline, summary, phone, location },
+            update: { headline, summary, phone, location },
+          },
+        },
+      },
+      include: {
+        profile: true,
       },
     })
 
-    const profile = await prisma.profile.update({
-      where: { userId: user.id },
+    // Atualiza experiências
+    if (Array.isArray(experiences)) {
+      await prisma.experience.deleteMany({ where: { profileId: updatedUser.profile!.id } })
+      if (experiences.length > 0) {
+        await prisma.experience.createMany({
+          data: experiences.map((exp: any) => ({
+            profileId: updatedUser.profile!.id,
+            company: exp.company || '',
+            role: exp.role || '',
+            startDate: exp.startDate ? new Date(exp.startDate) : new Date(),
+            endDate: exp.endDate ? new Date(exp.endDate) : null,
+            description: exp.description || '',
+          })),
+        }))
+      }
+    }
+
+    // Atualiza skills
+    if (Array.isArray(skills)) {
+      await prisma.skill.deleteMany({ where: { profileId: updatedUser.profile!.id } })
+      if (skills.length > 0) {
+        await prisma.skill.createMany({
+          data: skills.map((sk: any) => ({
+            profileId: updatedUser.profile!.id,
+            name: sk.name || '',
+            level: sk.level || 'Intermediário',
+          })),
+        }))
+      }
+    }
+
+    // Atualiza formação
+    if (Array.isArray(education)) {
+      await prisma.education.deleteMany({ where: { profileId: updatedUser.profile!.id } })
+      if (education.length > 0) {
+        await prisma.education.createMany({
+          data: education.map((edu: any) => ({
+            profileId: updatedUser.profile!.id,
+            institution: edu.institution || '',
+            course: edu.course || '',
+            year: edu.year ? parseInt(String(edu.year), 10) : null,
+            description: edu.description || '',
+          })),
+        }))
+      }
+    }
+
+    // Busca perfil atualizado completo
+    const fullUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      include: {
+        profile: true,
+        experiences: { orderBy: { startDate: 'desc' } },
+        skills: true,
+        education: true,
+      },
+    })
+
+    return NextResponse.json({
       data: {
-        headline: body.headline,
-        summary: body.summary,
-        phone: body.phone,
-        location: body.location,
+        user: {
+          id: fullUser!.id,
+          email: fullUser!.email,
+          name: fullUser!.name || '',
+          avatar: fullUser!.avatar || '',
+        },
+        profile: {
+          headline: fullUser!.profile?.headline || '',
+          summary: fullUser!.profile?.summary || '',
+          phone: fullUser!.profile?.phone || '',
+          location: fullUser!.profile?.location || '',
+        },
+        experiences: fullUser!.experiences,
+        skills: fullUser!.skills,
+        education: fullUser!.education,
       },
     })
-
-    await prisma.experience.deleteMany({ where: { profileId: profile.id } })
-    await prisma.skill.deleteMany({ where: { profileId: profile.id } })
-    await prisma.education.deleteMany({ where: { profileId: profile.id } })
-
-    if (body.experiences?.length) {
-      await prisma.experience.createMany({
-        data: body.experiences.map((exp) => ({
-          profileId: profile.id,
-          company: exp.company,
-          role: exp.role,
-          startDate: parseDate(exp.startDate),
-          endDate: exp.endDate ? parseDate(exp.endDate) : null,
-          description: exp.description,
-        })),
-      })
-    }
-
-    if (body.skills?.length) {
-      await prisma.skill.createMany({
-        data: body.skills.map((skill) => ({
-          profileId: profile.id,
-          name: skill.name,
-          level: skill.level || 'PLENO',
-        })),
-      })
-    }
-
-    if (body.education?.length) {
-      await prisma.education.createMany({
-        data: body.education.map((edu) => ({
-          profileId: profile.id,
-          institution: edu.institution,
-          course: edu.course,
-          year: edu.year ?? null,
-          description: edu.description,
-        })),
-      })
-    }
-
-    return GET()
   } catch (error) {
     console.error('Erro ao atualizar perfil:', error)
-    const message = error instanceof Error ? error.message : 'Erro interno'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: 'Erro ao atualizar perfil' }, { status: 500 })
   }
 }
