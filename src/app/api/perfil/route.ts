@@ -14,37 +14,37 @@ export async function GET() {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
-    const dbUser = await prisma.user.findUnique({
-      where: { id: user.id },
+    const dbProfile = await prisma.profile.findUnique({
+      where: { userId: user.id },
       include: {
-        profile: true,
+        user: true,
         experiences: { orderBy: { startDate: 'desc' } },
         skills: true,
         education: true,
       },
     })
 
-    if (!dbUser || !dbUser.profile) {
+    if (!dbProfile) {
       return NextResponse.json({ error: 'Perfil não encontrado' }, { status: 404 })
     }
 
     return NextResponse.json({
       data: {
         user: {
-          id: dbUser.id,
-          email: dbUser.email,
-          name: dbUser.name || '',
-          avatar: dbUser.avatar || '',
+          id: dbProfile.user.id,
+          email: dbProfile.user.email,
+          name: dbProfile.user.name || '',
+          avatar: dbProfile.user.avatar || '',
         },
         profile: {
-          headline: dbUser.profile.headline || '',
-          summary: dbUser.profile.summary || '',
-          phone: dbUser.profile.phone || '',
-          location: dbUser.profile.location || '',
+          headline: dbProfile.headline || '',
+          summary: dbProfile.summary || '',
+          phone: dbProfile.phone || '',
+          location: dbProfile.location || '',
         },
-        experiences: dbUser.experiences,
-        skills: dbUser.skills,
-        education: dbUser.education,
+        experiences: dbProfile.experiences,
+        skills: dbProfile.skills,
+        education: dbProfile.education,
       },
     })
   } catch (error) {
@@ -69,25 +69,36 @@ export async function PUT(request: Request) {
     const { name, email, headline, summary, phone, location, experiences, skills, education } =
       body
 
-    const updatedUser = await prisma.user.update({
+    // Atualiza o usuário
+    await prisma.user.update({
       where: { id: user.id },
       data: {
         name,
         email,
-        profile: {
-          upsert: {
-            create: { headline, summary, phone, location },
-            update: { headline, summary, phone, location },
-          },
-        },
-      },
-      include: {
-        profile: true,
       },
     })
 
-    const profileId = updatedUser.profile!.id
+    // Upsert no perfil
+    const profile = await prisma.profile.upsert({
+      where: { userId: user.id },
+      create: {
+        userId: user.id,
+        headline,
+        summary,
+        phone,
+        location,
+      },
+      update: {
+        headline,
+        summary,
+        phone,
+        location,
+      },
+    })
 
+    const profileId = profile.id
+
+    // Atualiza experiências
     if (Array.isArray(experiences)) {
       await prisma.experience.deleteMany({ where: { profileId } })
       if (experiences.length > 0) {
@@ -112,6 +123,7 @@ export async function PUT(request: Request) {
       }
     }
 
+    // Atualiza skills
     if (Array.isArray(skills)) {
       await prisma.skill.deleteMany({ where: { profileId } })
       if (skills.length > 0) {
@@ -125,6 +137,7 @@ export async function PUT(request: Request) {
       }
     }
 
+    // Atualiza formação
     if (Array.isArray(education)) {
       await prisma.education.deleteMany({ where: { profileId } })
       if (education.length > 0) {
@@ -147,10 +160,11 @@ export async function PUT(request: Request) {
       }
     }
 
-    const fullUser = await prisma.user.findUnique({
-      where: { id: user.id },
+    // Busca perfil atualizado completo
+    const fullProfile = await prisma.profile.findUnique({
+      where: { userId: user.id },
       include: {
-        profile: true,
+        user: true,
         experiences: { orderBy: { startDate: 'desc' } },
         skills: true,
         education: true,
@@ -160,20 +174,20 @@ export async function PUT(request: Request) {
     return NextResponse.json({
       data: {
         user: {
-          id: fullUser!.id,
-          email: fullUser!.email,
-          name: fullUser!.name || '',
-          avatar: fullUser!.avatar || '',
+          id: fullProfile!.user.id,
+          email: fullProfile!.user.email,
+          name: fullProfile!.user.name || '',
+          avatar: fullProfile!.user.avatar || '',
         },
         profile: {
-          headline: fullUser!.profile?.headline || '',
-          summary: fullUser!.profile?.summary || '',
-          phone: fullUser!.profile?.phone || '',
-          location: fullUser!.profile?.location || '',
+          headline: fullProfile!.headline || '',
+          summary: fullProfile!.summary || '',
+          phone: fullProfile!.phone || '',
+          location: fullProfile!.location || '',
         },
-        experiences: fullUser!.experiences,
-        skills: fullUser!.skills,
-        education: fullUser!.education,
+        experiences: fullProfile!.experiences,
+        skills: fullProfile!.skills,
+        education: fullProfile!.education,
       },
     })
   } catch (error) {
