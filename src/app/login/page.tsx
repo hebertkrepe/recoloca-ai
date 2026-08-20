@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,7 +12,6 @@ import { createClient } from '@/lib/supabase/client'
 import { getAuthErrorMessage } from '@/lib/auth-errors'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -28,15 +26,15 @@ export default function LoginPage() {
 
       if (error) {
         toast.error(getAuthErrorMessage(error.message))
+        setIsLoading(false)
         return
       }
 
       toast.success('Login realizado com sucesso!')
-      router.push('/dashboard')
-      router.refresh()
+      // Redirecionamento completo para atualizar os cookies no middleware da Vercel
+      window.location.href = '/dashboard'
     } catch {
       toast.error('Erro ao fazer login. Tente novamente.')
-    } finally {
       setIsLoading(false)
     }
   }
