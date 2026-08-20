@@ -13,10 +13,11 @@ import {
   getJobById,
   addCustomJobToKanban,
   type KanbanApplication,
+  type KanbanStatus,
 } from '@/lib/kanban-storage'
 import { Plus, Clock, Building2, MapPin, DollarSign, Edit2, Trash2, GripVertical, X, ExternalLink } from 'lucide-react'
 
-const COLUMNS = [
+const COLUMNS: { id: KanbanStatus; title: string; color: string }[] = [
   { id: 'INTEREST', title: 'Interesse', color: 'border-yellow-500/30' },
   { id: 'APPLIED', title: 'Aplicado', color: 'border-blue-500/30' },
   { id: 'INTERVIEW', title: 'Entrevista', color: 'border-purple-500/30' },
@@ -66,7 +67,7 @@ export default function MinhasVagasPage() {
     []
   )
 
-  const handleStatusChange = (applicationId: string, newStatus: string) => {
+  const handleStatusChange = (applicationId: string, newStatus: KanbanStatus) => {
     updateApplications((prev) =>
       prev.map((app) => (app.id === applicationId ? { ...app, status: newStatus } : app))
     )
@@ -82,7 +83,7 @@ export default function MinhasVagasPage() {
       return
     }
 
-    const newStatus = destination.droppableId
+    const newStatus = destination.droppableId as KanbanStatus
     const application = applications.find((app) => app.id === draggableId)
 
     if (application) {
@@ -126,7 +127,7 @@ export default function MinhasVagasPage() {
       return
     }
 
-    const app = addCustomJobToKanban({
+    addCustomJobToKanban({
       title: newJob.title,
       company: newJob.company,
       url: newJob.url,
