@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { analyzeResumeText } from '@/lib/groq'
+import { extractText, getDocumentProxy } from 'unpdf'
 
 export const runtime = 'nodejs'
 
@@ -25,20 +26,19 @@ export async function POST(request: Request) {
 
     const buffer = Buffer.from(await file.arrayBuffer())
 
-    // pdf-parse v2+ exporta PDFParse como classe
-    const { PDFParse } = await import('pdf-parse')
-    const parser = new PDFParse({ data: buffer })
-    const textResult = await parser.getText()
-    const text = textResult.text?.trim()
+    // unpdf funciona na Vercel (sem DOMMatrix)
+    const pdf = await getDocumentProxy(new Uint8Array(buffer))
+    const { text } = await extractText(pdf, { mergePages: true })
+    const fullText = (Array.isArray(text) ? text.join('\n') : text || '').trim()
 
-    if (!text) {
+    if (!fullText) {
       return NextResponse.json(
-        { error: 'Não foi possível extrair texto do PDF' },
+        { error: 'Não foi possível extrair texto do PDF. Tente outro arquivo ou um PDF com texto selecionável.' },
         { status: 422 }
       )
     }
 
-    const parsed = await analyzeResumeText(text)
+    const parsed = await analyzeResumeText(fullText)
 
     return NextResponse.json({ data: parsed })
   } catch (error) {
@@ -127,13 +127,11 @@ export async function PUT(request: Request) {
 
     if (body.skills?.length) {
       await prisma.skill.createMany({
-        data: body.skills.map(
-          (skill: { name: string; level: string }) => ({
-            profileId: profile.id,
-            name: skill.name,
-            level: skill.level || 'PLENO',
-          })
-        ),
+        data: body.skills.map((skill: { name: string; level: string }) => ({
+          profileId: profile.id,
+          name: skill.name,
+          level: skill.level || 'PLENO',
+        })),
       })
     }
 
