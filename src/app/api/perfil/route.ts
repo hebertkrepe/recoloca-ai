@@ -66,9 +66,9 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json()
-    const { name, email, headline, summary, phone, location, experiences, skills, education } = body
+    const { name, email, headline, summary, phone, location, experiences, skills, education } =
+      body
 
-    // Atualiza usuário e perfil
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -86,54 +86,67 @@ export async function PUT(request: Request) {
       },
     })
 
-    // Atualiza experiências
+    const profileId = updatedUser.profile!.id
+
     if (Array.isArray(experiences)) {
-      await prisma.experience.deleteMany({ where: { profileId: updatedUser.profile!.id } })
+      await prisma.experience.deleteMany({ where: { profileId } })
       if (experiences.length > 0) {
         await prisma.experience.createMany({
-          data: experiences.map((exp: any) => ({
-            profileId: updatedUser.profile!.id,
-            company: exp.company || '',
-            role: exp.role || '',
-            startDate: exp.startDate ? new Date(exp.startDate) : new Date(),
-            endDate: exp.endDate ? new Date(exp.endDate) : null,
-            description: exp.description || '',
-          })),
-        }))
+          data: experiences.map(
+            (exp: {
+              company: string
+              role: string
+              startDate: string
+              endDate?: string | null
+              description?: string
+            }) => ({
+              profileId,
+              company: exp.company || '',
+              role: exp.role || '',
+              startDate: exp.startDate ? new Date(exp.startDate) : new Date(),
+              endDate: exp.endDate ? new Date(exp.endDate) : null,
+              description: exp.description || '',
+            })
+          ),
+        })
       }
     }
 
-    // Atualiza skills
     if (Array.isArray(skills)) {
-      await prisma.skill.deleteMany({ where: { profileId: updatedUser.profile!.id } })
+      await prisma.skill.deleteMany({ where: { profileId } })
       if (skills.length > 0) {
         await prisma.skill.createMany({
-          data: skills.map((sk: any) => ({
-            profileId: updatedUser.profile!.id,
+          data: skills.map((sk: { name: string; level: string }) => ({
+            profileId,
             name: sk.name || '',
             level: sk.level || 'Intermediário',
           })),
-        }))
+        })
       }
     }
 
-    // Atualiza formação
     if (Array.isArray(education)) {
-      await prisma.education.deleteMany({ where: { profileId: updatedUser.profile!.id } })
+      await prisma.education.deleteMany({ where: { profileId } })
       if (education.length > 0) {
         await prisma.education.createMany({
-          data: education.map((edu: any) => ({
-            profileId: updatedUser.profile!.id,
-            institution: edu.institution || '',
-            course: edu.course || '',
-            year: edu.year ? parseInt(String(edu.year), 10) : null,
-            description: edu.description || '',
-          })),
-        }))
+          data: education.map(
+            (edu: {
+              institution: string
+              course: string
+              year?: number | null
+              description?: string
+            }) => ({
+              profileId,
+              institution: edu.institution || '',
+              course: edu.course || '',
+              year: edu.year ? parseInt(String(edu.year), 10) : null,
+              description: edu.description || '',
+            })
+          ),
+        })
       }
     }
 
-    // Busca perfil atualizado completo
     const fullUser = await prisma.user.findUnique({
       where: { id: user.id },
       include: {
